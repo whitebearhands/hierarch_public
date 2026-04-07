@@ -1,6 +1,6 @@
 # Hierarch — Architecture Overview
 
-> **Hierarch** is a generative AI agent orchestration platform that transforms natural language requirements into fully autonomous, multi-agent workflows — no code required.
+> **Hierarch** is an AI automation platform that turns plain-language descriptions into fully autonomous, multi-agent workflows — no code required.
 
 > ⚠️ **Active development.** Server and client application are maintained in private repositories.  
 > The same technology is currently **under patent examination**.  
@@ -10,14 +10,14 @@
 
 ## Vision
 
-Traditional automation requires engineers to write, deploy, and maintain complex pipelines.  
-Hierarch eliminates that gap: describe what you need in plain language, and the platform designs, builds, and runs a team of AI agents to accomplish it.
+Every day, people repeat the same tasks: checking news, researching markets, summarizing documents, monitoring competitors.  
+Hierarch automates these recurring workflows — describe what you need once, and a team of AI agents handles it from then on.
 
 ```mermaid
 flowchart LR
-    A["💬 Natural Language\nRequirement"] --> B(["⚙️ Hierarch\nPlatform"])
+    A["💬 Describe your\nworkflow in plain language"] --> B(["⚙️ Hierarch\nDesign · Build · Execute"])
     B --> C["🤖 Autonomous\nMulti-Agent Workflow"]
-    C --> D["📊 Result"]
+    C --> D["📊 Automated\nResults — daily, weekly"]
 
     style A fill:#f0f4ff,stroke:#6366f1
     style B fill:#6366f1,stroke:#4f46e5,color:#fff
@@ -34,16 +34,15 @@ flowchart LR
 | 1 | **Conversational Blueprint Design** | An AI architect conducts a structured interview to extract requirements and produces an executable workflow specification |
 | 2 | **Automatic Execution Strategy** | Each agent's optimal execution mode (AI reasoning vs. deterministic code) is decided automatically at compile time |
 | 3 | **Dynamic Code Synthesis** | The workflow specification is compiled into a runnable program on-the-fly — no static templates, no manual wiring |
-| 4 | **Isolated Execution + Token Budget** | Each run is sandboxed in an isolated process with a hard token spending limit to guarantee cost control |
-| 5 | **Semantic Tool Discovery** | External MCP tools are discovered via embedding-based vector search and automatically bound to the agents that need them |
+| 4 | **Dual Execution Mode** | Run workflows on-demand locally, or schedule them on the cloud for fully hands-free automation |
+| 5 | **Token Budget & Circuit Breaker** | Every run has a hard token spending limit — costs are predictable and capped |
+| 6 | **Semantic Tool Discovery** | External MCP tools are discovered via embedding-based vector search and automatically bound to the agents that need them |
 
 ---
 
-## System Architecture
+## How It Works
 
 Hierarch operates as a **three-phase pipeline**: Design → Build → Execute.
-
-> **Key principle:** Design and code synthesis happen on the **server**. Execution happens **locally on the user's machine** via the desktop client app.
 
 ```mermaid
 flowchart TD
@@ -63,21 +62,20 @@ flowchart TD
         end
     end
 
-    subgraph LOCAL["🖥️ Client Machine (Tauri App)"]
-        subgraph Phase3["Phase 3 · Execute"]
-            DB2 -->|download script| RT["Local\nSandboxed Runtime"]
-            RT -->|real-time logs| UX["User Interface"]
-            RT --- CB["Token\nCircuit Breaker"]
-        end
+    subgraph EXEC["⚡ Phase 3 · Execute"]
+        direction LR
+        DB2 --> LOCAL["🖥️ Local Execution\n(Desktop App)"]
+        DB2 --> SERVER["☁️ Cloud Execution\n(Scheduled)"]
     end
 
-    Phase1 --> Phase2 --> Phase3
+    Phase1 --> Phase2 --> EXEC
 
     style CLOUD fill:#f8faff,stroke:#6366f1
-    style LOCAL fill:#f0fdf4,stroke:#22c55e
+    style EXEC fill:#ecfdf5,stroke:#10b981
     style Phase1 fill:#eff6ff,stroke:#3b82f6
     style Phase2 fill:#fdf4ff,stroke:#a855f7
-    style Phase3 fill:#dcfce7,stroke:#16a34a
+    style LOCAL fill:#f0fdf4,stroke:#22c55e
+    style SERVER fill:#eff6ff,stroke:#6366f1
 ```
 
 ---
@@ -93,12 +91,12 @@ sequenceDiagram
     participant Architect as AI Architect
     participant Store as State Store
 
-    User->>Architect: "I need a report on trending GitHub repos"
-    Architect->>User: "What time range? Any specific language?"
-    User->>Architect: "Past 7 days, Python only"
+    User->>Architect: "I need a daily news briefing on AI trends"
+    Architect->>User: "What topics? Any specific sources?"
+    User->>Architect: "Tech + economy, summarized by 8 AM"
     Architect->>Store: Save draft Blueprint
-    Architect-->>User: "Got it. Any approval step before sending the report?"
-    User->>Architect: "No, just run it"
+    Architect-->>User: "Should I schedule it daily, or run on demand?"
+    User->>Architect: "Daily at 8 AM"
     Architect->>Store: Save final Blueprint (is_complete = true)
     Architect-->>User: ✅ Design complete — ready to build
 ```
@@ -169,6 +167,8 @@ flowchart TD
     style CODE fill:#f0fdf4,stroke:#22c55e
 ```
 
+By deciding execution strategy at **compile time** rather than runtime, Hierarch avoids unnecessary LLM calls — deterministic tasks run as plain code, saving both cost and latency.
+
 ### MCP Tool Discovery
 
 Hierarch maintains a **registry of external MCP servers** (sourced from Smithery).  
@@ -214,89 +214,56 @@ sequenceDiagram
     RT-->>RT: Return final text answer
 ```
 
-**Key properties:**
-
 | Property | Detail |
 |----------|--------|
 | Tool discovery | Available tools are fetched live from the MCP server at runtime |
-| Multi-turn | Full conversation history (prompt → plan → observation → …) is preserved across iterations |
-| Termination | Loop ends when the LLM produces a plain-text response with no tool call, or after 10 iterations |
+| Multi-turn | Full conversation history is preserved across iterations |
+| Termination | Loop ends when the LLM produces a plain-text response with no tool call, or after max iterations |
 | Fallback | If the MCP server is unreachable, the agent falls back to pure LLM inference |
 | Parallelism | Multiple agents within the same workflow step run their ReAct loops concurrently |
 
-```mermaid
-flowchart TD
-    START["Agent receives task + context"]
-    TOOLS["Fetch tool list from MCP server"]
-    PLAN["LLM plans next action"]
-    CALL["Call tool"]
-    OBS["Receive observation"]
-    REPLAN["Re-plan with updated context"]
-    DONE["Return final answer"]
-    FALLBACK["Pure LLM fallback"]
-
-    START --> TOOLS
-    TOOLS -->|success| PLAN
-    TOOLS -->|connection failed| FALLBACK
-    PLAN -->|tool call| CALL
-    PLAN -->|no tool call| DONE
-    CALL --> OBS
-    OBS --> REPLAN
-    REPLAN -->|tool call| CALL
-    REPLAN -->|no tool call| DONE
-
-    style DONE fill:#ecfdf5,stroke:#10b981
-    style FALLBACK fill:#fef9c3,stroke:#ca8a04
-    style CALL fill:#eff6ff,stroke:#6366f1
-```
-
 ---
 
-## Phase 3 — Runtime (Execute)
+## Phase 3 — Dual Execution Mode
 
-The synthesized script is **downloaded to the user's machine** and executed locally inside the Tauri desktop app.  
-All LLM API calls and MCP tool connections originate from the **client**, keeping user credentials entirely off the server.
+Hierarch supports **two execution modes** from the same synthesized script. The script itself is environment-agnostic — it runs identically regardless of where it executes.
 
 ```mermaid
-sequenceDiagram
-    participant SRV as Cloud Server
-    participant APP as Tauri App
-    participant RT as Local Runtime
-    participant AG as Agent Process
-    participant CB as Token Circuit Breaker
+flowchart TD
+    SCRIPT["📄 Synthesized Script\n(environment-agnostic)"]
 
-    APP->>SRV: Request synthesized script
-    SRV-->>APP: Download script + required credential list
-    APP->>APP: User provides API keys (stored locally)
+    SCRIPT --> LOCAL
+    SCRIPT --> SERVER
 
-    APP->>RT: Execute script locally
-    RT->>AG: Spawn isolated subprocess
-    activate AG
-
-    loop For each workflow step
-        AG->>AG: Inject previous step context
-        AG->>AG: Run sub-agents in parallel
-        AG-)SRV: LLM API calls (direct, with user's key)
-        AG->>CB: Report token usage
-        CB-->>AG: ✅ Within budget
-        AG->>AG: Leader finalizes step output
-        AG-->>RT: Stream JSON log event
-        RT-->>APP: Real-time log display
+    subgraph LOCAL["🖥️ Local Execution"]
+        L1["Manual trigger\n(user clicks 'Run')"]
+        L2["User's own API keys"]
+        L3["MCP tools supported"]
+        L4["Free"]
     end
 
-    alt Normal completion
-        AG-->>RT: exit 0
-        RT-->>APP: ✅ Workflow complete
-    else Token budget exceeded
-        CB->>AG: ⛔ STOP
-        RT-->>APP: ⚠️ Budget limit reached
-    else Timeout
-        RT->>AG: Force kill
-        RT-->>APP: ⏱ Timed out
+    subgraph SERVER["☁️ Cloud Execution"]
+        S1["Scheduled trigger\n(daily / weekly cron)"]
+        S2["Platform-managed keys"]
+        S3["LLM-only workflows"]
+        S4["Pro plan"]
     end
 
-    deactivate AG
+    LOCAL --> R1["📊 Result\n(displayed in app)"]
+    SERVER --> R2["📊 Result\n(delivered via notification)"]
+
+    style SCRIPT fill:#f0f4ff,stroke:#6366f1
+    style LOCAL fill:#f0fdf4,stroke:#22c55e
+    style SERVER fill:#eff6ff,stroke:#6366f1
 ```
+
+| | Local Execution | Cloud Execution |
+|---|---|---|
+| **Trigger** | Manual (click to run) | Scheduled (cron — daily, weekly, etc.) |
+| **LLM API Key** | User's own key | Platform-managed |
+| **MCP Tools** | ✅ Supported | LLM-only workflows |
+| **Cost to user** | Free (user pays LLM provider directly) | Pro subscription |
+| **Best for** | Testing, MCP workflows, privacy-sensitive tasks | Recurring automation — news, research, monitoring |
 
 ### Token Circuit Breaker
 
@@ -311,6 +278,108 @@ xychart-beta
     line [8000, 22000, 39000, 50000]
     bar  [8000, 22000, 39000, 50000]
 ```
+
+---
+
+## Platform Access
+
+Hierarch is accessible via **Web** and **Desktop App**, sharing the same interface.
+
+```mermaid
+flowchart LR
+    subgraph UI["🎨 Shared React UI"]
+        CHAT["Chat with\nAI Architect"]
+        VIZ["Blueprint\nVisualization"]
+        LOG["Execution\nLog Viewer"]
+    end
+
+    UI --> WEB["🌐 Web App\n(browser)"]
+    UI --> DESK["🖥️ Desktop App\n(Tauri)"]
+
+    WEB --> CLOUD_EXEC["☁️ Cloud Execution"]
+    DESK --> LOCAL_EXEC["🖥️ Local Execution"]
+    DESK --> CLOUD_EXEC
+
+    style UI fill:#f0f4ff,stroke:#6366f1
+    style WEB fill:#eff6ff,stroke:#3b82f6
+    style DESK fill:#f0fdf4,stroke:#22c55e
+```
+
+| | Web App | Desktop App |
+|---|---|---|
+| **Access** | Browser — no install | Download (Windows / macOS) |
+| **Design & Build** | ✅ | ✅ |
+| **Cloud Execution** | ✅ (Pro) | ✅ (Pro) |
+| **Local Execution** | — | ✅ (Free) |
+| **MCP Tools** | Cloud-supported tools only | All MCP tools |
+
+The Web App provides **zero-friction onboarding** — try Hierarch instantly in the browser.  
+The Desktop App adds **local execution** for users who want full control over their API keys and data.
+
+---
+
+## Pricing
+
+| | Free | Pro | Pro+ |
+|---|---|---|---|
+| **Price** | $0 | $19 / month | $49 / month |
+| **Execution** | Local only | Local + Cloud | Local + Cloud |
+| **Scheduling** | — | ✅ (5 workflows) | ✅ (20 workflows) |
+| **Saved Blueprints** | 3 | 20 | Unlimited |
+| **Best for** | Try it out | Daily automation | Power users |
+
+> **Core principle:** Local execution is always free. You pay for **cloud automation** — scheduled workflows that run without you lifting a finger.
+
+---
+
+## System Components
+
+```mermaid
+flowchart TB
+    subgraph CLIENT["🖥️ Client (Web or Desktop)"]
+        APP["React UI\n(shared codebase)"]
+        RT["Local Runtime\n(Desktop only)"]
+        APP -->|"launch & stream logs"| RT
+    end
+
+    subgraph SERVER["☁️ Cloud Server"]
+        API["Backend API\n(Python · FastAPI)"]
+        SYNTH["AI Architect\n+ Compiler\n+ Synthesizer"]
+        SCHED["Scheduler\n(cron-based)"]
+        SRT["Server Runtime\n(sandboxed)"]
+        API --> SYNTH
+        SCHED --> SRT
+    end
+
+    subgraph STORE["🗄️ Cloud Storage"]
+        FS["Firestore\n· Sessions · Blueprints\n· MCP Registry · Vectors"]
+    end
+
+    subgraph TOOLS["🔌 External Services"]
+        LLM["LLM API\n(Gemini / OpenAI)"]
+        MCP["MCP Tool Servers\n(Smithery)"]
+    end
+
+    APP <-->|"Chat / Build\nREST + SSE"| API
+    API <-->|"Read / Write"| FS
+    RT -->|"LLM calls\n(user's API key)"| LLM
+    RT -->|"Tool calls"| MCP
+    SRT -->|"LLM calls\n(platform key)"| LLM
+    SCHED -->|"Read schedules"| FS
+
+    style CLIENT fill:#f0fdf4,stroke:#22c55e
+    style SERVER fill:#f8faff,stroke:#6366f1
+    style STORE fill:#fef9c3,stroke:#ca8a04
+    style TOOLS fill:#fdf4ff,stroke:#a855f7
+```
+
+| Component | Technology | Responsibility |
+|-----------|-----------|----------------|
+| **Web / Desktop UI** | React (shared) · Tauri (desktop shell) | Chat UI · Blueprint visualization · Log display |
+| **Backend Server** | Python · FastAPI · async SSE | Blueprint design · Compilation · Code synthesis · Scheduling |
+| **Database** | Google Cloud Firestore | Sessions, blueprints, MCP registry, vector index |
+| **Local Runtime** | Subprocess (inside Tauri) | Execute synthesized script · Token circuit breaker |
+| **Server Runtime** | Subprocess (on server) | Scheduled execution · Token circuit breaker |
 
 ---
 
@@ -329,6 +398,10 @@ flowchart LR
     subgraph Execute
         C3["GET /execute/stream/{script_id}"]
     end
+    subgraph Schedule
+        C7["POST /schedules"]
+        C8["GET /schedules"]
+    end
     subgraph Utility
         C4["GET /threads"]
         C5["GET /users/usage"]
@@ -336,6 +409,7 @@ flowchart LR
     end
 
     Design --> Build --> Execute
+    Execute -.-> Schedule
 ```
 
 | Phase | Endpoint | Transport | Description |
@@ -343,80 +417,11 @@ flowchart LR
 | Design | `POST /chat` | SSE stream | Conversational blueprint design |
 | Build | `GET /build/stream/{id}` | SSE stream | Real-time compile + code synthesis |
 | Execute | `GET /execute/stream/{id}` | SSE stream | Sandboxed workflow execution |
+| Schedule | `POST /schedules` | REST | Create recurring automation |
+| Schedule | `GET /schedules` | REST | List scheduled workflows |
 | — | `GET /threads` | REST | List user sessions |
 | — | `GET /users/usage` | REST | Token consumption tracking |
 | — | `GET /mcp` | REST | Available MCP tool catalog |
-
----
-
-## System Components
-
-Hierarch is composed of three independently managed components.  
-The division of responsibility between server and client is intentional: **heavy AI work on the server, execution on the user's machine**.
-
-```mermaid
-flowchart TB
-    subgraph CLIENT["🖥️ Client Machine"]
-        APP["Tauri Desktop App\n(Windows / macOS)"]
-        RT["Local Runtime\n(sandboxed subprocess)"]
-        APP -->|"launch & stream logs"| RT
-    end
-
-    subgraph SERVER["☁️ Cloud Server"]
-        API["Backend API\n(Python · FastAPI)"]
-        SYNTH["AI Architect\n+ Compiler\n+ Synthesizer"]
-        API --> SYNTH
-    end
-
-    subgraph STORE["🗄️ Cloud Storage"]
-        FS["Firestore\n· Sessions · Blueprints\n· MCP Registry · Vectors"]
-    end
-
-    subgraph TOOLS["🔌 External Services"]
-        LLM["LLM API\n(Gemini / OpenAI)"]
-        MCP["MCP Tool Servers\n(Smithery)"]
-    end
-
-    APP <-->|"① Chat / Build\nREST + SSE"| API
-    API <-->|"Read / Write"| FS
-    APP -->|"② Download script"| API
-    RT -->|"③ LLM calls\n(user's API key)"| LLM
-    RT -->|"③ Tool calls"| MCP
-
-    style CLIENT fill:#f0fdf4,stroke:#22c55e
-    style SERVER fill:#f8faff,stroke:#6366f1
-    style STORE fill:#fef9c3,stroke:#ca8a04
-    style TOOLS fill:#fdf4ff,stroke:#a855f7
-```
-
-| Component | Technology | Responsibility |
-|-----------|-----------|----------------|
-| **Desktop App** | Tauri (Rust + WebView) | Chat UI · Build trigger · Script execution · Log display |
-| **Backend Server** | Python · FastAPI | Blueprint design · Compilation · Code synthesis |
-| **Database** | Google Cloud Firestore | Sessions, blueprints, MCP registry, vector index |
-| **Local Runtime** | Subprocess (inside Tauri) | Execute synthesized script · Token circuit breaker |
-
-### Why run locally?
-
-- **Privacy** — user API keys and data never pass through the server during execution
-- **Flexibility** — users can connect to any LLM provider or local model
-- **No server cost** — LLM inference costs go directly from user to provider
-
----
-
-## Technology Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Desktop App | Tauri · Rust |
-| API Server | Python · FastAPI · async SSE |
-| AI / LLM | Google Gemini (multi-model) · LangChain |
-| Embeddings | Gemini Embedding API · 768-dim vectors |
-| Vector Search | Google Cloud Firestore native vector index |
-| State Store | Google Cloud Firestore |
-| Tool Ecosystem | MCP (Model Context Protocol) · Smithery Registry |
-| Code Synthesis | Template-based dynamic program generation |
-| Runtime | Isolated subprocess · token-aware circuit breaker |
 
 ---
 
@@ -425,7 +430,7 @@ flowchart TB
 ```mermaid
 flowchart TD
     subgraph Isolation["Process Isolation"]
-        P["Parent API Server"] -->|"spawn"| CH["Child Process\n(synthesized script)"]
+        P["Runtime"] -->|"spawn"| CH["Child Process\n(synthesized script)"]
         P -. "credentials\nvia env only" .-> CH
         CH -->|"stdout logs"| P
         CH -->|"auto-deleted\nafter run"| TMP["Temp Script File"]
@@ -444,14 +449,42 @@ flowchart TD
     style Tenancy fill:#f0fdf4,stroke:#22c55e
 ```
 
-1. **Local Execution** — synthesized code runs entirely on the user's machine; the server never executes user workloads
-2. **Credential Scoping** — API keys are stored and used locally in the desktop app, never transmitted to the server
-3. **Process Isolation** — each workflow runs in an isolated subprocess inside the Tauri app, separate from the UI process
-4. **Automatic Cleanup** — temporary script files are deleted immediately after execution completes
-5. **Token Budget** — per-project spending limits are enforced locally, preventing runaway LLM costs
-6. **User Isolation** — all cloud data is partitioned by user identity at the storage layer
+1. **Process Isolation** — each workflow runs in an isolated subprocess, separate from the host process
+2. **Credential Scoping** — API keys are injected via environment variables and never persisted in scripts
+3. **Automatic Cleanup** — temporary script files are deleted immediately after execution completes
+4. **Token Budget** — per-project spending limits prevent runaway LLM costs
+5. **User Isolation** — all cloud data is partitioned by user identity at the storage layer
+6. **Local-first Privacy** — desktop users' API keys and data never pass through the server during execution
 
 ---
+
+## Technology Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Web App | React |
+| Desktop App | Tauri · Rust · React |
+| API Server | Python · FastAPI · async SSE |
+| AI / LLM | Google Gemini (multi-model) · LangChain |
+| Embeddings | Gemini Embedding API · 768-dim vectors |
+| Vector Search | Google Cloud Firestore native vector index |
+| State Store | Google Cloud Firestore |
+| Tool Ecosystem | MCP (Model Context Protocol) · Smithery Registry |
+| Code Synthesis | Template-based dynamic program generation |
+| Runtime | Isolated subprocess · token-aware circuit breaker |
+| Scheduling | Cron-based scheduler (server-side) |
+
+---
+
+## Use Cases
+
+| Use Case | Description | Execution |
+|----------|-------------|-----------|
+| 📰 **Daily News Briefing** | Summarize top news by category every morning | ☁️ Scheduled |
+| 📊 **Market Research** | Monitor competitors and generate weekly trend reports | ☁️ Scheduled |
+| 📄 **Paper Curation** | Find and summarize latest academic papers in your field | ☁️ Scheduled |
+| 🎬 **Content Pipeline** | Automate YouTube production workflow from ideation to editing | 🖥️ Local (MCP) |
+| 🔍 **Ad-hoc Research** | Deep-dive into a topic with multi-agent analysis | 🖥️ Local |
 
 ---
 
@@ -459,9 +492,15 @@ flowchart TD
 
 | Item | Status |
 |------|--------|
+| AI Architect (Design) | ✅ Complete |
+| Compiler + Synthesizer (Build) | ✅ Complete |
+| Desktop App (UI) | 🔧 In progress |
+| Execution Engine | 🔧 In progress |
+| Web App | 📋 Planned |
+| Scheduling | 📋 Planned |
 | Development | 🔧 Active development |
 | Source code | 🔒 Private repositories (server + client app) |
-| Patent | 📋 Under examination (same technology) |
+| Patent | 📋 Under examination |
 
 ---
 
