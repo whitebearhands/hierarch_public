@@ -43,33 +43,41 @@ flowchart LR
 
 Hierarch operates as a **three-phase pipeline**: Design → Build → Execute.
 
+> **Key principle:** Design and code synthesis happen on the **server**. Execution happens **locally on the user's machine** via the desktop client app.
+
 ```mermaid
 flowchart TD
-    subgraph Phase1["Phase 1 · Design"]
-        U["User"] -->|natural language| A["AI Architect"]
-        A -->|clarifying questions| U
-        A -->|Blueprint| DB1[("State Store")]
+    subgraph CLOUD["☁️ Cloud Server"]
+        subgraph Phase1["Phase 1 · Design"]
+            U["User"] -->|natural language| A["AI Architect"]
+            A -->|clarifying questions| U
+            A -->|Blueprint| DB1[("State Store")]
+        end
+
+        subgraph Phase2["Phase 2 · Build"]
+            DB1 --> C["Compiler\n(strategy decision)"]
+            C -->|tool search| R[("MCP\nRegistry")]
+            R --> C
+            C --> S["Synthesizer\n(code generation)"]
+            S -->|synthesized script| DB2[("Script Store")]
+        end
     end
 
-    subgraph Phase2["Phase 2 · Build"]
-        DB1 --> C["Compiler\n(strategy decision)"]
-        C -->|tool search| R[("MCP\nRegistry")]
-        R --> C
-        C --> S["Synthesizer\n(code generation)"]
-        S --> DB2[("Script Store")]
-    end
-
-    subgraph Phase3["Phase 3 · Execute"]
-        DB2 --> RT["Sandboxed\nRuntime"]
-        RT -->|real-time logs| UX["User Interface"]
-        RT --> CB["Token\nCircuit Breaker"]
+    subgraph LOCAL["🖥️ Client Machine (Tauri App)"]
+        subgraph Phase3["Phase 3 · Execute"]
+            DB2 -->|download script| RT["Local\nSandboxed Runtime"]
+            RT -->|real-time logs| UX["User Interface"]
+            RT --- CB["Token\nCircuit Breaker"]
+        end
     end
 
     Phase1 --> Phase2 --> Phase3
 
+    style CLOUD fill:#f8faff,stroke:#6366f1
+    style LOCAL fill:#f0fdf4,stroke:#22c55e
     style Phase1 fill:#eff6ff,stroke:#3b82f6
     style Phase2 fill:#fdf4ff,stroke:#a855f7
-    style Phase3 fill:#f0fdf4,stroke:#22c55e
+    style Phase3 fill:#dcfce7,stroke:#16a34a
 ```
 
 ---
@@ -181,40 +189,45 @@ flowchart LR
 
 ## Phase 3 — Runtime (Execute)
 
-The synthesized script runs in an **isolated sandbox process** with built-in safety mechanisms.
+The synthesized script is **downloaded to the user's machine** and executed locally inside the Tauri desktop app.  
+All LLM API calls and MCP tool connections originate from the **client**, keeping user credentials entirely off the server.
 
 ```mermaid
 sequenceDiagram
-    participant API as API Server
-    participant RT as Sandboxed Runtime
+    participant SRV as Cloud Server
+    participant APP as Tauri App
+    participant RT as Local Runtime
     participant AG as Agent Process
     participant CB as Token Circuit Breaker
-    participant UI as User Interface
 
-    API->>RT: Execute script (inject credentials via env)
+    APP->>SRV: Request synthesized script
+    SRV-->>APP: Download script + required credential list
+    APP->>APP: User provides API keys (stored locally)
+
+    APP->>RT: Execute script locally
     RT->>AG: Spawn isolated subprocess
     activate AG
 
     loop For each workflow step
         AG->>AG: Inject previous step context
         AG->>AG: Run sub-agents in parallel
+        AG-)SRV: LLM API calls (direct, with user's key)
         AG->>CB: Report token usage
         CB-->>AG: ✅ Within budget
         AG->>AG: Leader finalizes step output
         AG-->>RT: Stream JSON log event
-        RT-->>UI: SSE: real-time log
+        RT-->>APP: Real-time log display
     end
 
     alt Normal completion
         AG-->>RT: exit 0
-        RT-->>UI: ✅ success
+        RT-->>APP: ✅ Workflow complete
     else Token budget exceeded
-        CB-->>AG: ⛔ STOP signal
-        AG-->>RT: exit (circuit breaker tripped)
-        RT-->>UI: ⚠️ circuit_breaker
+        CB->>AG: ⛔ STOP
+        RT-->>APP: ⚠️ Budget limit reached
     else Timeout
-        RT->>AG: Force kill (120s limit)
-        RT-->>UI: ⏱ timeout
+        RT->>AG: Force kill
+        RT-->>APP: ⏱ Timed out
     end
 
     deactivate AG
@@ -273,37 +286,56 @@ flowchart LR
 
 ## System Components
 
-Hierarch is composed of three independently managed components.
+Hierarch is composed of three independently managed components.  
+The division of responsibility between server and client is intentional: **heavy AI work on the server, execution on the user's machine**.
 
 ```mermaid
 flowchart TB
-    subgraph Client["🖥️ Client Application"]
-        APP["Tauri Desktop App\n(Windows / macOS / Linux)"]
+    subgraph CLIENT["🖥️ Client Machine"]
+        APP["Tauri Desktop App\n(Windows / macOS)"]
+        RT["Local Runtime\n(sandboxed subprocess)"]
+        APP -->|"launch & stream logs"| RT
     end
 
-    subgraph Server["☁️ Backend Server"]
-        API["FastAPI Server\n(Python · async)"]
-        RT["Sandboxed\nRuntime"]
-        API --> RT
+    subgraph SERVER["☁️ Cloud Server"]
+        API["Backend API\n(Python · FastAPI)"]
+        SYNTH["AI Architect\n+ Compiler\n+ Synthesizer"]
+        API --> SYNTH
     end
 
-    subgraph Storage["🗄️ Cloud Storage"]
-        FS["Google Cloud Firestore\n· User sessions\n· Blueprints\n· MCP Registry\n· Vector Index"]
+    subgraph STORE["🗄️ Cloud Storage"]
+        FS["Firestore\n· Sessions · Blueprints\n· MCP Registry · Vectors"]
     end
 
-    APP <-->|"REST + SSE\n(real-time streaming)"| API
+    subgraph TOOLS["🔌 External Services"]
+        LLM["LLM API\n(Gemini / OpenAI)"]
+        MCP["MCP Tool Servers\n(Smithery)"]
+    end
+
+    APP <-->|"① Chat / Build\nREST + SSE"| API
     API <-->|"Read / Write"| FS
+    APP -->|"② Download script"| API
+    RT -->|"③ LLM calls\n(user's API key)"| LLM
+    RT -->|"③ Tool calls"| MCP
 
-    style Client fill:#f0f4ff,stroke:#6366f1
-    style Server fill:#fdf4ff,stroke:#a855f7
-    style Storage fill:#fef9c3,stroke:#ca8a04
+    style CLIENT fill:#f0fdf4,stroke:#22c55e
+    style SERVER fill:#f8faff,stroke:#6366f1
+    style STORE fill:#fef9c3,stroke:#ca8a04
+    style TOOLS fill:#fdf4ff,stroke:#a855f7
 ```
 
-| Component | Technology | Role |
-|-----------|-----------|------|
-| **Desktop App** | Tauri (Rust + WebView) | User-facing interface — design, build, execute workflows |
-| **Backend Server** | Python · FastAPI | AI orchestration, compilation, sandboxed execution |
-| **Database** | Google Cloud Firestore | State, blueprints, MCP registry, vector embeddings |
+| Component | Technology | Responsibility |
+|-----------|-----------|----------------|
+| **Desktop App** | Tauri (Rust + WebView) | Chat UI · Build trigger · Script execution · Log display |
+| **Backend Server** | Python · FastAPI | Blueprint design · Compilation · Code synthesis |
+| **Database** | Google Cloud Firestore | Sessions, blueprints, MCP registry, vector index |
+| **Local Runtime** | Subprocess (inside Tauri) | Execute synthesized script · Token circuit breaker |
+
+### Why run locally?
+
+- **Privacy** — user API keys and data never pass through the server during execution
+- **Flexibility** — users can connect to any LLM provider or local model
+- **No server cost** — LLM inference costs go directly from user to provider
 
 ---
 
@@ -347,11 +379,12 @@ flowchart TD
     style Tenancy fill:#f0fdf4,stroke:#22c55e
 ```
 
-1. **Process Isolation** — synthesized code always runs in a separate subprocess; the API server process is never exposed
-2. **Credential Scoping** — API keys and secrets are injected only into child processes via environment variables, never logged
-3. **Automatic Cleanup** — temporary script files are deleted immediately after execution completes
-4. **Token Budget** — per-project spending limits prevent runaway LLM costs
-5. **User Isolation** — all data is partitioned by user identity at the storage layer
+1. **Local Execution** — synthesized code runs entirely on the user's machine; the server never executes user workloads
+2. **Credential Scoping** — API keys are stored and used locally in the desktop app, never transmitted to the server
+3. **Process Isolation** — each workflow runs in an isolated subprocess inside the Tauri app, separate from the UI process
+4. **Automatic Cleanup** — temporary script files are deleted immediately after execution completes
+5. **Token Budget** — per-project spending limits are enforced locally, preventing runaway LLM costs
+6. **User Isolation** — all cloud data is partitioned by user identity at the storage layer
 
 ---
 
