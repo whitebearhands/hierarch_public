@@ -239,14 +239,12 @@ flowchart TD
         L1["Manual trigger\n(user clicks 'Run')"]
         L2["User's own API keys"]
         L3["MCP tools supported"]
-        L4["Free"]
     end
 
     subgraph SERVER["☁️ Cloud Execution"]
         S1["Scheduled trigger\n(daily / weekly cron)"]
         S2["Platform-managed keys"]
         S3["LLM-only workflows"]
-        S4["Pro plan"]
     end
 
     LOCAL --> R1["📊 Result\n(displayed in app)"]
@@ -262,7 +260,6 @@ flowchart TD
 | **Trigger** | Manual (click to run) | Scheduled (cron — daily, weekly, etc.) |
 | **LLM API Key** | User's own key | Platform-managed |
 | **MCP Tools** | ✅ Supported | LLM-only workflows |
-| **Cost to user** | Free (user pays LLM provider directly) | Pro subscription |
 | **Best for** | Testing, MCP workflows, privacy-sensitive tasks | Recurring automation — news, research, monitoring |
 
 ### Token Circuit Breaker
@@ -309,26 +306,12 @@ flowchart LR
 |---|---|---|
 | **Access** | Browser — no install | Download (Windows / macOS) |
 | **Design & Build** | ✅ | ✅ |
-| **Cloud Execution** | ✅ (Pro) | ✅ (Pro) |
-| **Local Execution** | — | ✅ (Free) |
+| **Cloud Execution** | ✅ | ✅ |
+| **Local Execution** | — | ✅ |
 | **MCP Tools** | Cloud-supported tools only | All MCP tools |
 
 The Web App provides **zero-friction onboarding** — try Hierarch instantly in the browser.  
 The Desktop App adds **local execution** for users who want full control over their API keys and data.
-
----
-
-## Pricing
-
-| | Free | Pro | Pro+ |
-|---|---|---|---|
-| **Price** | $0 | $19 / month | $49 / month |
-| **Execution** | Local only | Local + Cloud | Local + Cloud |
-| **Scheduling** | — | ✅ (5 workflows) | ✅ (20 workflows) |
-| **Saved Blueprints** | 3 | 20 | Unlimited |
-| **Best for** | Try it out | Daily automation | Power users |
-
-> **Core principle:** Local execution is always free. You pay for **cloud automation** — scheduled workflows that run without you lifting a finger.
 
 ---
 
@@ -381,47 +364,6 @@ flowchart TB
 | **Local Runtime** | Subprocess (inside Tauri) | Execute synthesized script · Token circuit breaker |
 | **Server Runtime** | Subprocess (on server) | Scheduled execution · Token circuit breaker |
 
----
-
-## API Interface
-
-All interactions are available via a simple REST + SSE API.
-
-```mermaid
-flowchart LR
-    subgraph Design
-        C1["POST /chat"]
-    end
-    subgraph Build
-        C2["GET /build/stream/{thread_id}"]
-    end
-    subgraph Execute
-        C3["GET /execute/stream/{script_id}"]
-    end
-    subgraph Schedule
-        C7["POST /schedules"]
-        C8["GET /schedules"]
-    end
-    subgraph Utility
-        C4["GET /threads"]
-        C5["GET /users/usage"]
-        C6["GET /mcp"]
-    end
-
-    Design --> Build --> Execute
-    Execute -.-> Schedule
-```
-
-| Phase | Endpoint | Transport | Description |
-|-------|----------|-----------|-------------|
-| Design | `POST /chat` | SSE stream | Conversational blueprint design |
-| Build | `GET /build/stream/{id}` | SSE stream | Real-time compile + code synthesis |
-| Execute | `GET /execute/stream/{id}` | SSE stream | Sandboxed workflow execution |
-| Schedule | `POST /schedules` | REST | Create recurring automation |
-| Schedule | `GET /schedules` | REST | List scheduled workflows |
-| — | `GET /threads` | REST | List user sessions |
-| — | `GET /users/usage` | REST | Token consumption tracking |
-| — | `GET /mcp` | REST | Available MCP tool catalog |
 
 ---
 
