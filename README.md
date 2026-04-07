@@ -187,6 +187,71 @@ flowchart LR
 
 ---
 
+## Agent Execution — ReAct Loop
+
+When an agent is bound to an MCP tool server, it does not call the tool blindly.  
+Instead, it runs a **Planning → Tool Call → Observation → Re-plan** cycle until it has enough information to produce a final answer.
+
+```mermaid
+sequenceDiagram
+    participant LLM as LLM
+    participant RT as Agent Runtime
+    participant MCP as MCP Tool Server
+
+    RT->>MCP: Connect & list available tools
+    MCP-->>RT: Tool catalog (name + schema)
+
+    RT->>LLM: Prompt + tool schemas
+    LLM-->>RT: Plan → Tool call decision
+
+    loop Until final answer (max 10 iterations)
+        RT->>MCP: Call tool(name, args)
+        MCP-->>RT: Observation (result)
+        RT->>LLM: Re-plan with observation
+        LLM-->>RT: Next action or final answer
+    end
+
+    RT-->>RT: Return final text answer
+```
+
+**Key properties:**
+
+| Property | Detail |
+|----------|--------|
+| Tool discovery | Available tools are fetched live from the MCP server at runtime |
+| Multi-turn | Full conversation history (prompt → plan → observation → …) is preserved across iterations |
+| Termination | Loop ends when the LLM produces a plain-text response with no tool call, or after 10 iterations |
+| Fallback | If the MCP server is unreachable, the agent falls back to pure LLM inference |
+| Parallelism | Multiple agents within the same workflow step run their ReAct loops concurrently |
+
+```mermaid
+flowchart TD
+    START["Agent receives task + context"]
+    TOOLS["Fetch tool list from MCP server"]
+    PLAN["LLM plans next action"]
+    CALL["Call tool"]
+    OBS["Receive observation"]
+    REPLAN["Re-plan with updated context"]
+    DONE["Return final answer"]
+    FALLBACK["Pure LLM fallback"]
+
+    START --> TOOLS
+    TOOLS -->|success| PLAN
+    TOOLS -->|connection failed| FALLBACK
+    PLAN -->|tool call| CALL
+    PLAN -->|no tool call| DONE
+    CALL --> OBS
+    OBS --> REPLAN
+    REPLAN -->|tool call| CALL
+    REPLAN -->|no tool call| DONE
+
+    style DONE fill:#ecfdf5,stroke:#10b981
+    style FALLBACK fill:#fef9c3,stroke:#ca8a04
+    style CALL fill:#eff6ff,stroke:#6366f1
+```
+
+---
+
 ## Phase 3 — Runtime (Execute)
 
 The synthesized script is **downloaded to the user's machine** and executed locally inside the Tauri desktop app.  
