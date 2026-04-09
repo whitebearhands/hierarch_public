@@ -2,7 +2,7 @@
 
 > **Hierarch** is an AI automation platform that turns plain-language descriptions into fully autonomous, multi-agent workflows — no code required.
 
-> ⚠️ **Active development.** Server and client application are maintained in private repositories.  
+> ⚠️ **Active development.** Server and client application are maintained in **private repositories**.  
 > The same technology is currently **under patent examination**.  
 > Inquiries: **hwansys@naver.com**
 
