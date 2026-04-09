@@ -1,0 +1,6 @@
+[submodule "hierarch"]
+	path = hierarch
+	url = https://github.com/whitebearhands/hierarch
+[submodule "hierarch_client"]
+	path = hierarch_client
+	url = https://github.com/whitebearhands/hierarch_client
