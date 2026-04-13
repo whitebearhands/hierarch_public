@@ -1,6 +1,8 @@
 # Hierarch — Architecture Overview
 
-> **Hierarch** is an AI automation platform that turns plain-language descriptions into fully autonomous, multi-agent workflows — no code required.
+> **Hierarch** is an AI-powered **code generation tool for automation**.  
+> Describe your workflow in plain language — Hierarch designs the multi-agent architecture, determines each agent's execution strategy, and generates a production-ready program using **Harness Engineering**: every agent is compiled independently and assembled into a single, self-contained executable that runs your automation end-to-end.  
+> You define the goal. Hierarch writes and runs the code.
 
 > ⚠️ **Active development.** Server and client application are maintained in **private repositories**.  
 > The same technology is currently **under patent examination**.  
@@ -140,13 +142,14 @@ flowchart LR
         direction TB
         BP["Blueprint\n(logical)"] --> VEC["Semantic\nTool Search"]
         VEC --> LLM1["Strategy\nDecision LLM"]
-        LLM1 -->|execution_type:\nai · code| PBP["Physical Blueprint\n(enriched)"]
+        LLM1 -->|"execution_type:\nllm · mcp · python"| PBP["Physical Blueprint\n(enriched)"]
     end
 
-    subgraph Synthesize["Synthesizer"]
+    subgraph Synthesize["Synthesizer · Harness Engineering"]
         direction TB
-        PBP2["Physical Blueprint"] --> TMP["Template\nEngine"]
-        TMP --> SCR["Executable\nScript"]
+        PBP2["Physical Blueprint"] --> CG["Per-Agent\nCode Generator"]
+        CG --> ASM["Assembly"]
+        ASM --> SCR["Self-contained\nExecutable Script"]
     end
 
     Compile --> Synthesize
@@ -160,14 +163,141 @@ flowchart LR
 ```mermaid
 flowchart TD
     D{"Agent task type?"}
-    D -->|"Reasoning / analysis /\nweb search / MCP tool"| AI["🤖 AI Execution\nLLM inference + optional tool call"]
-    D -->|"File I/O / API call /\nparsing / calculation"| CODE["⚙️ Code Execution\nDeterministic Python snippet"]
+    D -->|"Reasoning /\nanalysis / creation"| LLM["🤖 LLM Mode\nPure language model inference"]
+    D -->|"MCP tool available\n& relevant"| MCP["🔌 MCP Mode\nReAct loop over tool server"]
+    D -->|"File I/O / calculation /\ndeterministic logic"| CODE["⚙️ Python Mode\nDeterministic code snippet"]
 
-    style AI fill:#eff6ff,stroke:#6366f1
+    style LLM fill:#eff6ff,stroke:#6366f1
+    style MCP fill:#fdf4ff,stroke:#a855f7
     style CODE fill:#f0fdf4,stroke:#22c55e
 ```
 
 By deciding execution strategy at **compile time** rather than runtime, Hierarch avoids unnecessary LLM calls — deterministic tasks run as plain code, saving both cost and latency.
+
+---
+
+## Harness Engineering — Code Synthesis Strategy
+
+### What is Agent Harness Engineering?
+
+In conventional multi-agent frameworks (LangChain, AutoGen, CrewAI), a **harness** is the runtime scaffolding that wires agents together while the program is running.
+
+```mermaid
+flowchart LR
+    subgraph CONVENTIONAL["Conventional Approach"]
+        direction TB
+        FW["Framework\n(harness)"]
+        AG1["Agent A\n(config)"]
+        AG2["Agent B\n(config)"]
+        AG3["Agent C\n(config)"]
+        FW -->|"loads at runtime"| AG1 & AG2 & AG3
+        DEP["Framework must be\ninstalled at runtime"]
+    end
+
+    style CONVENTIONAL fill:#fef2f2,stroke:#ef4444
+    style DEP fill:#fee2e2,stroke:#ef4444
+```
+
+Agents are instances of framework classes, behavior is controlled by config passed at runtime, and the framework itself is always a runtime dependency.
+
+---
+
+### Hierarch's Approach — Harness as Code Generator
+
+Hierarch inverts this model. The harness is used **only at build time** as a code generator. At runtime, the generated script is entirely self-contained — the harness package is never imported.
+
+```mermaid
+flowchart TD
+    subgraph BUILD["Build Time (Server)"]
+        direction LR
+        HB["harness/base.py\nharness/react.py"]
+        HC["harness/codegen.py"]
+        BP["Physical Blueprint"]
+
+        BP --> HC
+        HB -->|"source embed"| ASM
+        HC -->|"per-agent class\ncode generation"| ASM
+        ASM["Assembler\n(synthesizer.py)"] --> SCRIPT
+    end
+
+    subgraph SCRIPT["Generated Script (self-contained)"]
+        direction TB
+        I["imports"]
+        CL["HierarchLogger\nTokenCircuitBreaker\nLLMClient\n— source embedded —"]
+        RA["ReActLoop\n— source embedded —"]
+        BA["BaseAgent\n— source embedded —"]
+        A1["Agent_step1_executor\n(LLMAgent)"]
+        A2["Agent_step2_sender\n(MCPAgent)"]
+        A3["Agent_step3_parser\n(PythonAgent)"]
+        S1["run_step_step1()"]
+        S2["run_step_step2()"]
+        S3["run_step_step3()"]
+        M["main()\nnext_step chain runner"]
+    end
+
+    subgraph RUNTIME["Run Time (anywhere)"]
+        SCRIPT -->|"python generated_run.py"| EX["Execution\n— no framework needed —"]
+    end
+
+    style BUILD fill:#fdf4ff,stroke:#a855f7
+    style SCRIPT fill:#eff6ff,stroke:#3b82f6
+    style RUNTIME fill:#f0fdf4,stroke:#22c55e
+```
+
+---
+
+### Comparison
+
+| Aspect | Conventional Harness | Hierarch Harness |
+|--------|---------------------|-----------------|
+| **Harness role** | Runtime orchestrator | Build-time code generator |
+| **Agent definition** | Class instance + config dict | Generated class with logic baked in |
+| **Framework at runtime** | Required | Not present |
+| **Portability** | Needs framework installed | Any Python environment |
+| **Agent code** | Shared template, differentiated by config | Each agent gets its own generated class |
+| **Introspection** | Opaque — behavior hidden in framework | Transparent — all logic readable in one file |
+| **Execution entry point** | Framework `.run()` method | Plain `python script.py` |
+| **Modification** | Change config → re-run | Regenerate or edit script directly |
+
+---
+
+### Per-Agent Independent Code Generation
+
+The key innovation is that **each agent's code is generated independently** from its compiled spec, then assembled into a single file.
+
+```mermaid
+flowchart LR
+    subgraph BLUEPRINT["Physical Blueprint"]
+        SA1["SubAgent\nid: news-fetcher\ntype: mcp\nmcp_config: {...}"]
+        SA2["SubAgent\nid: summarizer\ntype: llm\ndescription: ..."]
+        SA3["SubAgent\nid: slack-sender\ntype: python\ncode_snippet: ..."]
+    end
+
+    subgraph CODEGEN["codegen.py — Independent Generation"]
+        G1["generate_mcp_agent()\n→ MCPAgent class code"]
+        G2["generate_llm_agent()\n→ LLMAgent class code"]
+        G3["generate_python_agent()\n→ PythonAgent class code"]
+    end
+
+    subgraph OUTPUT["Assembled Script"]
+        C1["class Agent_step1_news_fetcher(BaseAgent):\n    async def run(...):\n        # ReAct loop over MCP server\n        ..."]
+        C2["class Agent_step1_summarizer(BaseAgent):\n    async def run(...):\n        # LLM inference\n        ..."]
+        C3["class Agent_step2_slack_sender(BaseAgent):\n    async def run(...):\n        # exec(code_snippet)\n        ..."]
+    end
+
+    SA1 --> G1 --> C1
+    SA2 --> G2 --> C2
+    SA3 --> G3 --> C3
+
+    style BLUEPRINT fill:#fef9c3,stroke:#ca8a04
+    style CODEGEN fill:#fdf4ff,stroke:#a855f7
+    style OUTPUT fill:#eff6ff,stroke:#3b82f6
+```
+
+Because each agent class is generated independently, each one can be:
+- **Reviewed** in isolation before the full script is deployed
+- **Tested** independently by instantiating the class directly
+- **Regenerated** individually if the compiled spec changes, without touching other agents
 
 ### MCP Tool Discovery
 
@@ -412,7 +542,7 @@ flowchart TD
 | Vector Search | Google Cloud Firestore native vector index |
 | State Store | Google Cloud Firestore |
 | Tool Ecosystem | MCP (Model Context Protocol) · Smithery Registry |
-| Code Synthesis | Template-based dynamic program generation |
+| Code Synthesis | Harness Engineering — per-agent independent code generation + assembly |
 | Runtime | Isolated subprocess · token-aware circuit breaker |
 | Scheduling | Cron-based scheduler (server-side) |
 
