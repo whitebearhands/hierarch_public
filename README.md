@@ -1,6 +1,7 @@
 # Hierarch — Architecture Overview
 
-> **Hierarch** is an agentic automation platform that synthesizes workflows into executable code via Harness Engineering.**.  
+> **Hierarch** is an agentic automation platform that synthesizes workflows into executable code via **Harness Engineering.**.
+
 > Describe your workflow in plain language — Hierarch designs the multi-agent architecture, determines each agent's execution strategy, and generates a production-ready program using **Harness Engineering**: every agent is compiled independently and assembled into a single, self-contained executable that runs your automation end-to-end.  
 > You define the goal. Hierarch writes and runs the code.
 
